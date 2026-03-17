@@ -6,64 +6,57 @@ import requests
 import time
 
 def fetch_trending(token):
-    url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=100"
-    
-    # We create a session first so we can inject the Authorization header reliably, 
-    # as some versions of FlareSolverr strip headers from direct request.get
-    session_payload = {
-        "cmd": "sessions.create",
-        "session": "truth_session"
+    # STEP 1: Use FlareSolverr to solve the Cloudflare challenge on the main page
+    setup_payload = {
+        "cmd": "request.get",
+        "url": "https://truthsocial.com/",
+        "maxTimeout": 60000
     }
     
-    print("Asking FlareSolverr to bypass Cloudflare and fetch API...")
+    print("Asking FlareSolverr to solve Cloudflare challenge on main page...")
     time.sleep(10) # Wait for flaresolverr to be ready on boot
     
     try:
-        # Create session
-        requests.post("http://localhost:8191/v1", json=session_payload, timeout=65)
-        
-        # Now make the request using that session, passing the Authorization header
-        payload = {
-            "cmd": "request.get",
-            "session": "truth_session",
-            "url": url,
-            "maxTimeout": 60000,
-            "headers": {
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-            }
-        }
-        res = requests.post("http://localhost:8191/v1", json=payload, timeout=65)
+        res = requests.post("http://localhost:8191/v1", json=setup_payload, timeout=65)
         res.raise_for_status()
         data = res.json()
-        
-        # Cleanup session
-        requests.post("http://localhost:8191/v1", json={"cmd": "sessions.destroy", "session": "truth_session"})
-        
     except Exception as e:
-        print(f"FlareSolverr request failed: {e}")
+        print(f"FlareSolverr setup request failed: {e}")
+        return None
+
+    if data.get("status") != "ok":
+        print(f"FlareSolverr returned error status: {data}")
         return None
         
-    if data.get("status") == "ok":
-        html = data.get("solution", {}).get("response", "")
-        
-        # Chrome wraps JSON in a <pre> tag when viewing directly
-        match = re.search(r'<pre[^>]*>(.*?)</pre>', html, re.DOTALL)
-        if match:
-            json_str = match.group(1)
-        else:
-            # Fallback: strip basic HTML tags
-            json_str = re.sub(r'<[^>]+>', '', html)
-            
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            print("Failed to decode JSON from FlareSolverr. Raw response excerpt:")
-            print(html[:1000])
+    solution = data.get("solution", {})
+    cookies = solution.get("cookies", [])
+    user_agent = solution.get("userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+    
+    # Format cookies for Python requests
+    cookie_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+    print(f"Obtained {len(cookie_dict)} cookies. Making authenticated API request...")
+
+    # STEP 2: Make the actual API request directly via Python with Auth header + Cookies
+    url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=100"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "User-Agent": user_agent
+    }
+    
+    try:
+        api_res = requests.get(url, headers=headers, cookies=cookie_dict, timeout=30)
+        if api_res.status_code == 403:
+            print("Direct request got 403. Cloudflare might still be blocking the raw request.")
             return None
-    else:
-        print(f"FlareSolverr returned error status: {data}")
+            
+        api_res.raise_for_status()
+        return api_res.json()
+        
+    except Exception as e:
+        print(f"API request failed: {e}")
+        if 'api_res' in locals():
+            print(f"Response text: {api_res.text[:1000]}")
         return None
 
 def main():
