@@ -1,8 +1,6 @@
 import json
 import os
 import sys
-import re
-import requests as std_requests
 from curl_cffi import requests
 import time
 from dotenv import load_dotenv
@@ -10,56 +8,8 @@ from dotenv import load_dotenv
 # Load credentials from .env if present
 load_dotenv()
 
-def fetch_trending(token):
-    url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=100"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-    }
-
-    # STEP 1: Attempt a direct request with curl_cffi (impersonating Chrome)
-    # This works perfectly on Residential IPs (like your laptop) without needing FlareSolverr.
-    print("Attempting direct authenticated API request...")
-    try:
-        api_res = requests.get(url, headers=headers, timeout=15, impersonate="chrome120")
-        if api_res.status_code == 200:
-            print("Direct request successful!")
-            return api_res.json()
-        elif api_res.status_code == 403:
-            print("Direct request got 403 (Cloudflare block). Falling back to FlareSolverr...")
-        else:
-            print(f"Direct request failed with status {api_res.status_code}. Response: {api_res.text[:100]}")
-    except Exception as e:
-        print(f"Direct request failed: {e}. Falling back to FlareSolverr...")
-
-    # STEP 2: FlareSolverr Fallback (for GitHub Actions/Datacenter IPs)
-    setup_payload = {
-        "cmd": "request.get",
-        "url": "https://truthsocial.com/",
-        "maxTimeout": 60000
-    }
-    
-    print("Asking FlareSolverr to solve Cloudflare challenge on main page...")
-    # Give it a moment to ensure FlareSolverr is up if we just started
-    try:
-        res = std_requests.post("http://localhost:8191/v1", json=setup_payload, timeout=65)
-        res.raise_for_status()
-        data = res.json()
-        
-        if data.get("status") == "ok":
-            solution = data.get("solution", {})
-            cookie_dict = {cookie['name']: cookie['value'] for cookie in solution.get("cookies", [])}
-            user_agent = solution.get("userAgent", headers["User-Agent"])
-            
-            print(f"Obtained {len(cookie_dict)} cookies from FlareSolverr. Retrying API request...")
-            headers["User-Agent"] = user_agent
-            api_res = requests.get(url, headers=headers, cookies=cookie_dict, timeout=30, impersonate="chrome120")
-            api_res.raise_for_status()
-            return api_res.json()
-    except Exception as e:
-        print(f"FlareSolverr fallback failed: {e}")
-        return None
+# The ultimate Cloudflare bypass: Act like the official Android App.
+MOBILE_USER_AGENT = "TruthSocial/334 (Android; 13; Scale/2.625)"
 
 def get_token():
     token = os.environ.get('TRUTHSOCIAL_TOKEN')
@@ -69,26 +19,69 @@ def get_token():
     if username and password:
         print("Attempting to authenticate via Username/Password to get a fresh token...")
         try:
-            from truthbrush.api import Api
-            # We must pass the credentials directly to get_auth_id or initialize correctly.
-            # We can use the Api class to handle the login.
-            api = Api(username=username, password=password)
-            # The Api constructor doesn't automatically login. It logs in when needed.
-            # We can force a login by calling get_auth_id
-            new_token = api.get_auth_id(username, password)
-            if new_token:
+            # We perform the login manually to capture specific backend error messages
+            # rather than relying on truthbrush which swallows the 403 JSON body.
+            payload = {
+                'client_id': '9X1Fdd-pxNsAgEDNi_SfhJWi8T-vLuV2WVzKIbkTCw4',
+                'client_secret': 'ozF8jzI4968oTKFkEnsBC-UbLPCdrSv0MkXGQu2o_-M',
+                'grant_type': 'password',
+                'username': username,
+                'password': password
+            }
+            headers = {
+                'User-Agent': MOBILE_USER_AGENT,
+                'Accept': 'application/json'
+            }
+            res = requests.post('https://truthsocial.com/oauth/token', json=payload, headers=headers, impersonate='chrome120')
+            
+            if res.status_code == 200:
                 print("Successfully obtained new token via login.")
-                return new_token
+                return res.json().get("access_token")
+            else:
+                print(f"Failed to login. Truth Social Server says: {res.text}")
+                print("Falling back to provided token if available...")
+                
         except Exception as e:
-            print(f"Failed to login with username/password: {e}")
+            print(f"Network error during login: {e}")
             print("Falling back to provided token if available...")
             
     if token:
         print("Using provided TRUTHSOCIAL_TOKEN...")
         return token
         
-    print("Error: No valid TRUTHSOCIAL_TOKEN provided, and username/password login failed or was not provided.")
+    print("\nError: Could not obtain a token.")
+    print("Your username/password was rejected (or missing), AND no TRUTHSOCIAL_TOKEN was provided.")
+    print("Please fix your credentials in .env and try again.")
     sys.exit(1)
+
+def fetch_trending(token):
+    url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=100"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "User-Agent": MOBILE_USER_AGENT
+    }
+
+    print("Fetching trending truths via direct mobile API request...")
+    try:
+        api_res = requests.get(url, headers=headers, timeout=15, impersonate="chrome120")
+        
+        if api_res.status_code == 200:
+            print("Direct request successful!")
+            return api_res.json()
+        elif api_res.status_code == 401:
+            print(f"API rejected the token as invalid or expired (401 Unauthorized). Response: {api_res.text}")
+            return None
+        elif api_res.status_code == 403:
+            print(f"Direct request got 403 (Cloudflare block or backend rejection). Response: {api_res.text}")
+            return None
+        else:
+            print(f"Direct request failed with status {api_res.status_code}. Response: {api_res.text[:100]}")
+            return None
+            
+    except Exception as e:
+        print(f"Direct request failed: {e}")
+        return None
 
 def main():
     token = get_token()
