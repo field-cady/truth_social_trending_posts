@@ -35,7 +35,8 @@ def fetch_trending(token):
     
     # Format cookies for Python requests
     cookie_dict = {cookie['name']: cookie['value'] for cookie in cookies}
-    print(f"Obtained {len(cookie_dict)} cookies. Making authenticated API request with curl_cffi...")
+    print(f"Obtained {len(cookie_dict)} cookies: {list(cookie_dict.keys())}")
+    print("Making authenticated API request with curl_cffi...")
 
     # STEP 2: Make the actual API request directly via curl_cffi with Auth header + Cookies.
     # We use curl_cffi to spoof the TLS fingerprint (impersonate="chrome120")
@@ -50,7 +51,7 @@ def fetch_trending(token):
     try:
         api_res = requests.get(url, headers=headers, cookies=cookie_dict, timeout=30, impersonate="chrome120")
         if api_res.status_code == 403:
-            print("Direct request got 403. Cloudflare might still be blocking the raw request.")
+            print(f"Direct request got 403. Cloudflare might still be blocking the raw request. Response: {api_res.text[:1000]}")
             return None
             
         api_res.raise_for_status()
