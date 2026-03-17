@@ -6,57 +6,56 @@ import requests
 import time
 
 def fetch_trending(token):
-    # STEP 1: Use FlareSolverr to solve the Cloudflare challenge on the main page
-    setup_payload = {
-        "cmd": "request.get",
-        "url": "https://truthsocial.com/",
-        "maxTimeout": 60000
-    }
+    # Truth Social WAF is extremely strict and blocks standard Python `requests` 
+    # even with a valid cf_clearance cookie due to TLS/JA3 fingerprinting.
+    # We MUST use FlareSolverr for the final API request.
     
-    print("Asking FlareSolverr to solve Cloudflare challenge on main page...")
+    url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=100"
+    
+    print("Asking FlareSolverr to bypass Cloudflare and fetch API...")
     time.sleep(10) # Wait for flaresolverr to be ready on boot
     
+    # We instruct FlareSolverr to make the request.
+    # By passing the Authorization header in the payload, FlareSolverr 
+    # will inject it into the headless Chrome session.
+    payload = {
+        "cmd": "request.get",
+        "url": url,
+        "maxTimeout": 60000,
+        "headers": {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json"
+        }
+    }
+    
     try:
-        res = requests.post("http://localhost:8191/v1", json=setup_payload, timeout=65)
+        res = requests.post("http://localhost:8191/v1", json=payload, timeout=65)
         res.raise_for_status()
         data = res.json()
     except Exception as e:
-        print(f"FlareSolverr setup request failed: {e}")
+        print(f"FlareSolverr request failed: {e}")
         return None
 
     if data.get("status") != "ok":
         print(f"FlareSolverr returned error status: {data}")
         return None
         
-    solution = data.get("solution", {})
-    cookies = solution.get("cookies", [])
-    user_agent = solution.get("userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+    html = data.get("solution", {}).get("response", "")
     
-    # Format cookies for Python requests
-    cookie_dict = {cookie['name']: cookie['value'] for cookie in cookies}
-    print(f"Obtained {len(cookie_dict)} cookies. Making authenticated API request...")
-
-    # STEP 2: Make the actual API request directly via Python with Auth header + Cookies
-    url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=100"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "User-Agent": user_agent
-    }
-    
-    try:
-        api_res = requests.get(url, headers=headers, cookies=cookie_dict, timeout=30)
-        if api_res.status_code == 403:
-            print("Direct request got 403. Cloudflare might still be blocking the raw request.")
-            return None
-            
-        api_res.raise_for_status()
-        return api_res.json()
+    # FlareSolverr returns the full DOM of the page.
+    # Because the API returns raw JSON, Chrome wraps it in a <pre> tag.
+    match = re.search(r'<pre[^>]*>(.*?)</pre>', html, re.DOTALL)
+    if match:
+        json_str = match.group(1)
+    else:
+        # Fallback: strip basic HTML tags (like <html><body>...</body></html>)
+        json_str = re.sub(r'<[^>]+>', '', html)
         
-    except Exception as e:
-        print(f"API request failed: {e}")
-        if 'api_res' in locals():
-            print(f"Response text: {api_res.text[:1000]}")
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        print("Failed to decode JSON from FlareSolverr. Raw response excerpt:")
+        print(html[:1000])
         return None
 
 def main():
