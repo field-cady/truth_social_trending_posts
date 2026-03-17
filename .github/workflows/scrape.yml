@@ -28,7 +28,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests
+          pip install requests curl_cffi
 
       - name: Run scraper
         env:
