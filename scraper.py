@@ -7,25 +7,40 @@ import time
 
 def fetch_trending(token):
     url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=100"
-    payload = {
-        "cmd": "request.get",
-        "url": url,
-        "maxTimeout": 60000,
-        "headers": {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json"
-        }
+    
+    # We create a session first so we can inject the Authorization header reliably, 
+    # as some versions of FlareSolverr strip headers from direct request.get
+    session_payload = {
+        "cmd": "sessions.create",
+        "session": "truth_session"
     }
     
     print("Asking FlareSolverr to bypass Cloudflare and fetch API...")
-    
-    # Wait for flaresolverr to be ready (it might take a few seconds on boot)
-    time.sleep(10)
+    time.sleep(10) # Wait for flaresolverr to be ready on boot
     
     try:
+        # Create session
+        requests.post("http://localhost:8191/v1", json=session_payload, timeout=65)
+        
+        # Now make the request using that session, passing the Authorization header
+        payload = {
+            "cmd": "request.get",
+            "session": "truth_session",
+            "url": url,
+            "maxTimeout": 60000,
+            "headers": {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            }
+        }
         res = requests.post("http://localhost:8191/v1", json=payload, timeout=65)
         res.raise_for_status()
         data = res.json()
+        
+        # Cleanup session
+        requests.post("http://localhost:8191/v1", json={"cmd": "sessions.destroy", "session": "truth_session"})
+        
     except Exception as e:
         print(f"FlareSolverr request failed: {e}")
         return None
