@@ -8,11 +8,6 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    services:
-      flaresolverr:
-        image: ghcr.io/flaresolverr/flaresolverr:latest
-        ports:
-          - 8191:8191
 
     permissions:
       contents: write # Needed to commit the changes back to the repo
@@ -28,11 +23,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests curl_cffi
+          pip install truthbrush python-dotenv
 
       - name: Run scraper
         env:
           TRUTHSOCIAL_TOKEN: ${{ secrets.TRUTHSOCIAL_TOKEN }}
+          TRUTHSOCIAL_USERNAME: ${{ secrets.TRUTHSOCIAL_USERNAME }}
+          TRUTHSOCIAL_PASSWORD: ${{ secrets.TRUTHSOCIAL_PASSWORD }}
         run: python scraper.py
 
       - name: Commit and push changes
