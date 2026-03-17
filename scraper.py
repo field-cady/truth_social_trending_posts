@@ -70,7 +70,11 @@ def get_token():
         print("Attempting to authenticate via Username/Password to get a fresh token...")
         try:
             from truthbrush.api import Api
+            # We must pass the credentials directly to get_auth_id or initialize correctly.
+            # We can use the Api class to handle the login.
             api = Api(username=username, password=password)
+            # The Api constructor doesn't automatically login. It logs in when needed.
+            # We can force a login by calling get_auth_id
             new_token = api.get_auth_id(username, password)
             if new_token:
                 print("Successfully obtained new token via login.")
