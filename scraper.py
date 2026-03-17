@@ -43,6 +43,10 @@ def main():
         print(f"Error fetching trending posts: {e}")
         sys.exit(1)
 
+    if trending_posts is None:
+        print("Error: The API returned None. This usually means the token is invalid, expired, or Cloudflare blocked the request from GitHub's servers.")
+        sys.exit(1)
+
     # 4. Filter and prepare new records
     new_records = []
     for post in trending_posts:
