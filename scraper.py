@@ -63,12 +63,33 @@ def fetch_trending(token):
             print(f"Response text: {api_res.text[:1000]}")
         return None
 
-def main():
+def get_token():
     token = os.environ.get('TRUTHSOCIAL_TOKEN')
+    username = os.environ.get('TRUTHSOCIAL_USERNAME')
+    password = os.environ.get('TRUTHSOCIAL_PASSWORD')
     
-    if not token:
-        print("Error: TRUTHSOCIAL_TOKEN environment variable is missing.")
-        sys.exit(1)
+    if username and password:
+        print("Attempting to authenticate via Username/Password to get a fresh token...")
+        try:
+            from truthbrush.api import Api
+            api = Api(username=username, password=password)
+            new_token = api.get_auth_id(username, password)
+            if new_token:
+                print("Successfully obtained new token via login.")
+                return new_token
+        except Exception as e:
+            print(f"Failed to login with username/password: {e}")
+            print("Falling back to provided token if available...")
+            
+    if token:
+        print("Using provided TRUTHSOCIAL_TOKEN...")
+        return token
+        
+    print("Error: No valid TRUTHSOCIAL_TOKEN provided, and username/password login failed or was not provided.")
+    sys.exit(1)
+
+def main():
+    token = get_token()
 
     file_path = 'trending_posts.jsonl'
     
