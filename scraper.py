@@ -38,8 +38,9 @@ def get_token():
                 print("Successfully obtained new token via login.")
                 return res.json().get("access_token")
             else:
-                print(f"Failed to login. Truth Social Server says: {res.text}")
-                print("Falling back to provided token if available...")
+                print("\n[!] AUTHENTICATION FAILED: Truth Social rejected your Username or Password.")
+                print(f"    Server Response: {res.text}")
+                print("    Falling back to TRUTHSOCIAL_TOKEN from .env if it exists...\n")
                 
         except Exception as e:
             print(f"Network error during login: {e}")
