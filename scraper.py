@@ -60,6 +60,10 @@ def main():
 
     file_path = 'trending_posts.jsonl'
     
+    # Ensure the file exists so git add doesn't fail
+    if not os.path.exists(file_path):
+        open(file_path, 'w').close()
+    
     # Load existing post IDs
     existing_ids = set()
     if os.path.exists(file_path):
@@ -79,6 +83,10 @@ def main():
 
     if not trending_posts:
         print("Error: The API returned None or failed to bypass Cloudflare.")
+        sys.exit(1)
+
+    if not isinstance(trending_posts, list):
+        print(f"Error: Expected a list of posts, got {type(trending_posts)}. Response was: {trending_posts}")
         sys.exit(1)
 
     # Filter and prepare new records
