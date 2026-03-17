@@ -28,6 +28,7 @@ jobs:
 
       - name: Run scraper
         env:
+          TRUTHSOCIAL_TOKEN: ${{ secrets.TRUTHSOCIAL_TOKEN }}
           TRUTHSOCIAL_USERNAME: ${{ secrets.TRUTHSOCIAL_USERNAME }}
           TRUTHSOCIAL_PASSWORD: ${{ secrets.TRUTHSOCIAL_PASSWORD }}
         run: python scraper.py

@@ -5,14 +5,19 @@ from truthbrush.api import Api
 
 def main():
     # 1. Setup API with credentials from environment variables
+    token = os.environ.get('TRUTHSOCIAL_TOKEN')
     username = os.environ.get('TRUTHSOCIAL_USERNAME')
     password = os.environ.get('TRUTHSOCIAL_PASSWORD')
     
-    if not username or not password:
-        print("Error: TRUTHSOCIAL_USERNAME or TRUTHSOCIAL_PASSWORD environment variables are missing.")
+    if token:
+        print("Authenticating via Token...")
+        api = Api(token=token)
+    elif username and password:
+        print("Authenticating via Username/Password...")
+        api = Api(username=username, password=password)
+    else:
+        print("Error: TRUTHSOCIAL_TOKEN or TRUTHSOCIAL_USERNAME/PASSWORD environment variables are missing.")
         sys.exit(1)
-
-    api = Api(username=username, password=password)
 
     file_path = 'trending_posts.jsonl'
     
