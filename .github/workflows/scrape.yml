@@ -7,7 +7,7 @@ on:
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     permissions:
       contents: write # Needed to commit the changes back to the repo
@@ -23,7 +23,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install truthbrush
 
       - name: Run scraper
