@@ -12,21 +12,25 @@ def get_api():
     token = os.environ.get('TRUTHSOCIAL_TOKEN')
     username = os.environ.get('TRUTHSOCIAL_USERNAME')
     password = os.environ.get('TRUTHSOCIAL_PASSWORD')
-    
+
+    if username and password:
+        print(f"Attempting to authenticate via Username: {username}")
+        api = Api(username=username, password=password)
+        auth_id = api.get_auth_id(username, password)
+        if auth_id:
+            print("Successfully obtained new token via login.")
+            api.auth_id = auth_id
+            return api
+        else:
+            print("\n[!] AUTHENTICATION FAILED: Truth Social rejected your Username or Password.")
+            print("    Falling back to TRUTHSOCIAL_TOKEN from .env if it exists...\n")
+
     if token:
         print("Authenticating via Token...")
         return Api(token=token)
-    elif username and password:
-        print(f"Attempting to authenticate via Username: {username}")
-        try:
-            return Api(username=username, password=password)
-        except Exception as e:
-            print(f"\n[!] AUTHENTICATION FAILED: Truth Social rejected your credentials.")
-            print(f"    Error: {e}")
-            sys.exit(1)
-    else:
-        print("Error: TRUTHSOCIAL_TOKEN or TRUTHSOCIAL_USERNAME/PASSWORD are missing from .env")
-        sys.exit(1)
+        
+    print("Error: TRUTHSOCIAL_TOKEN or valid TRUTHSOCIAL_USERNAME/PASSWORD are missing from .env")
+    sys.exit(1)
 
 def main():
     api = get_api()
@@ -49,12 +53,13 @@ def main():
                         continue
                         
     print(f"Loaded {len(existing_ids)} existing posts.")
+    print(existing_ids)
 
     # Fetch top 100 trending posts
     print("Fetching top 100 trending posts...")
     try:
         # truthbrush uses 'trending' method for trending statuses
-        trending_posts = api.trending(limit=100)
+        trending_posts = api.trending(limit=10)
     except Exception as e:
         print(f"Error fetching trending posts: {e}")
         sys.exit(1)
@@ -63,6 +68,7 @@ def main():
         print("No trending posts returned. This might be a rate limit or connection issue.")
         sys.exit(1)
 
+    print(trending_posts)
     # Filter and prepare new records
     new_records = []
     for post in trending_posts:
