@@ -7,7 +7,7 @@ on:
 
 jobs:
   scrape:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     permissions:
       contents: write # Needed to commit the changes back to the repo
@@ -21,6 +21,19 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Setup Cloudflare WARP
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update && sudo apt-get install -y cloudflare-warp
+          sudo systemctl start warp-svc
+          sleep 5
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+          sleep 5
+          curl -x socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace
+
       - name: Install dependencies
         run: |
           pip install truthbrush
@@ -30,6 +43,8 @@ jobs:
           TRUTHSOCIAL_TOKEN: ${{ secrets.TRUTHSOCIAL_TOKEN }}
           TRUTHSOCIAL_USERNAME: ${{ secrets.TRUTHSOCIAL_USERNAME }}
           TRUTHSOCIAL_PASSWORD: ${{ secrets.TRUTHSOCIAL_PASSWORD }}
+          http_proxy: socks5h://127.0.0.1:40000
+          https_proxy: socks5h://127.0.0.1:40000
         run: python scraper.py
 
       - name: Commit and push changes
