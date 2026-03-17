@@ -7,7 +7,7 @@ on:
 
 jobs:
   scrape:
-    runs-on: windows-latest
+    runs-on: macos-latest
 
     permissions:
       contents: write # Needed to commit the changes back to the repo
