@@ -2,45 +2,70 @@ import json
 import os
 import sys
 import time
+import requests
 from truthbrush.api import Api
 from dotenv import load_dotenv
 
 # Load credentials from .env if present
 load_dotenv()
 
+def fetch_via_flaresolverr(url, token=None):
+    flaresolverr_url = os.environ.get('FLARESOLVERR_URL')
+    if not flaresolverr_url:
+        return None
+    
+    print(f"Attempting to fetch {url} via FlareSolverr at {flaresolverr_url}...")
+    
+    payload = {
+        "cmd": "request.get",
+        "url": url,
+        "maxTimeout": 60000
+    }
+    
+    if token:
+        payload["headers"] = {"Authorization": f"Bearer {token}"}
+        
+    try:
+        response = requests.post(flaresolverr_url, json=payload, timeout=70)
+        if response.status_code == 200:
+            res_json = response.json()
+            if res_json.get("status") == "ok":
+                solution = res_json.get("solution", {})
+                # For JSON endpoints, FlareSolverr might put the response in 'response' or we might need to parse 'response' from HTML if it's not handled correctly
+                # But usually for API calls it works if the content-type is correct.
+                # If it's a JSON response, 'response' field contains the body.
+                body = solution.get("response", "")
+                try:
+                    return json.loads(body)
+                except json.JSONDecodeError:
+                    # Sometimes FlareSolverr returns the JSON inside the 'response' which is actually the HTML-wrapped body?
+                    # Let's try to find it.
+                    print("Warning: Response body is not valid JSON. FlareSolverr might have returned HTML.")
+                    return None
+        print(f"FlareSolverr failed: {response.text}")
+    except Exception as e:
+        print(f"Error calling FlareSolverr: {e}")
+    return None
+
 def get_api():
     token = os.environ.get('TRUTHSOCIAL_TOKEN')
-    username = os.environ.get('TRUTHSOCIAL_USERNAME')
-    password = os.environ.get('TRUTHSOCIAL_PASSWORD')
-
-    if username and password:
-        print(f"Attempting to authenticate via Username: {username}")
-        api = Api(username=username, password=password)
-        auth_id = api.get_auth_id(username, password)
-        if auth_id:
-            print("Successfully obtained new token via login.")
-            api.auth_id = auth_id
-            return api
-        else:
-            print("\n[!] AUTHENTICATION FAILED: Truth Social rejected your Username or Password.")
-            print("    Falling back to TRUTHSOCIAL_TOKEN from .env if it exists...\n")
-
     if token:
-        print("Authenticating via Token...")
+        print("Using TRUTHSOCIAL_TOKEN for authentication.")
         return Api(token=token)
         
-    print("Error: TRUTHSOCIAL_TOKEN or valid TRUTHSOCIAL_USERNAME/PASSWORD are missing from .env")
-    sys.exit(1)
+    print("Warning: TRUTHSOCIAL_TOKEN missing. Attempting unauthenticated access (likely to fail).")
+    return Api()
 
 def main():
-    api = get_api()
     file_path = 'trending_posts.jsonl'
+    token = os.environ.get('TRUTHSOCIAL_TOKEN')
+    flaresolverr_url = os.environ.get('FLARESOLVERR_URL')
     
-    # Ensure the file exists so git add doesn't fail
+    # Ensure the file exists
     if not os.path.exists(file_path):
         open(file_path, 'w').close()
     
-    # Load existing post IDs to prevent duplicates
+    # Load existing post IDs
     existing_ids = set()
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -53,22 +78,29 @@ def main():
                         continue
                         
     print(f"Loaded {len(existing_ids)} existing posts.")
-    print(existing_ids)
 
-    # Fetch top 100 trending posts
-    print("Fetching top 100 trending posts...")
-    try:
-        # truthbrush uses 'trending' method for trending statuses
-        trending_posts = api.trending(limit=10)
-    except Exception as e:
-        print(f"Error fetching trending posts: {e}")
-        sys.exit(1)
+    # Fetch trending posts
+    print("Fetching trending posts...")
+    trending_posts = None
+    
+    # If in GitHub Actions (FlareSolverr is available)
+    if flaresolverr_url:
+        url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=20"
+        trending_posts = fetch_via_flaresolverr(url, token)
+    
+    # Fallback to truthbrush (local testing)
+    if not trending_posts:
+        try:
+            api = get_api()
+            trending_posts = api.trending(limit=20)
+        except Exception as e:
+            print(f"Error fetching trending posts: {e}")
+            sys.exit(1)
 
     if not trending_posts:
-        print("No trending posts returned. This might be a rate limit or connection issue.")
+        print("No trending posts returned.")
         sys.exit(1)
 
-    print(trending_posts)
     # Filter and prepare new records
     new_records = []
     for post in trending_posts:
