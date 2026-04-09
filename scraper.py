@@ -38,9 +38,16 @@ def fetch_via_flaresolverr(url, token=None):
                 try:
                     return json.loads(body)
                 except json.JSONDecodeError:
-                    # Sometimes FlareSolverr returns the JSON inside the 'response' which is actually the HTML-wrapped body?
-                    # Let's try to find it.
                     print("Warning: Response body is not valid JSON. FlareSolverr might have returned HTML.")
+                    print(f"Body preview: {body[:1000]}")
+                    # Try to extract JSON from HTML using regex
+                    import re
+                    match = re.search(r'>(\s*\[.*?\]|\s*\{.*?\})\s*<', body, re.DOTALL)
+                    if match:
+                        try:
+                            return json.loads(match.group(1))
+                        except json.JSONDecodeError:
+                            pass
                     return None
         print(f"FlareSolverr failed: {response.text}")
     except Exception as e:
