@@ -5,6 +5,9 @@ on:
     - cron: '*/10 * * * *' # Run every 10 minutes
   workflow_dispatch: # Allow manual triggering
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   scrape:
     runs-on: ubuntu-latest
