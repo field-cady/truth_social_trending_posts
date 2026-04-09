@@ -54,6 +54,49 @@ def fetch_via_flaresolverr(url, token=None):
         print(f"Error calling FlareSolverr: {e}")
     return None
 
+def fetch_via_drissionpage(url, token):
+    try:
+        from DrissionPage import ChromiumPage
+        from DrissionPage import ChromiumOptions
+        import time
+        import re
+        
+        print("Attempting to fetch via DrissionPage (local browser)...")
+        co = ChromiumOptions()
+        co.set_argument('--no-sandbox')
+        page = ChromiumPage(co)
+        
+        # Go to main site to clear Cloudflare
+        print("Loading truthsocial.com to solve Cloudflare challenge...")
+        page.get('https://truthsocial.com')
+        time.sleep(10) # Wait for challenge
+        
+        print("Fetching API endpoint via injected JS fetch...")
+        js = f"""
+            return fetch('{url}', {{
+                method: 'GET',
+                headers: {{
+                    'Authorization': 'Bearer {token if token else ""}',
+                    'Accept': 'application/json'
+                }}
+            }}).then(res => res.json()).catch(err => ({{'error': err.toString()}}));
+        """
+        data = page.run_js(js)
+        
+        page.quit()
+        
+        return data
+    except ImportError:
+        print("DrissionPage not installed. Skipping local browser fallback.")
+        return None
+    except Exception as e:
+        print(f"Error fetching via DrissionPage: {e}")
+        try:
+            page.quit()
+        except:
+            pass
+        return None
+
 def get_api():
     token = os.environ.get('TRUTHSOCIAL_TOKEN')
     if token:
@@ -101,11 +144,19 @@ def main():
             api = get_api()
             trending_posts = api.trending(limit=20)
         except Exception as e:
-            print(f"Error fetching trending posts: {e}")
-            sys.exit(1)
+            print(f"Error fetching trending posts via truthbrush: {e}")
+            
+    # Fallback to DrissionPage (local residential connection bypassing Cloudflare)
+    if not trending_posts:
+        url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=20"
+        trending_posts = fetch_via_drissionpage(url, token)
+
+    if isinstance(trending_posts, dict) and 'errors' in trending_posts:
+        print(f"API Error returned: {trending_posts}")
+        trending_posts = None
 
     if not trending_posts:
-        print("No trending posts returned.")
+        print("No trending posts returned by any method.")
         sys.exit(1)
 
     # Filter and prepare new records
