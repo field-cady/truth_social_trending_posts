@@ -176,5 +176,21 @@ def main():
     print(f"Successfully appended response to responses.jsonl")
     print(f"Added {new_posts_count} new unique posts to posts.jsonl out of {len(posts)} fetched.")
 
+    # Push changes to GitHub
+    print("Committing and pushing data to GitHub...")
+    try:
+        subprocess.run(["git", "add", "responses.jsonl", "posts.jsonl"], check=True)
+        # Check if there are staged changes
+        status = subprocess.run(["git", "diff", "--staged", "--quiet"])
+        if status.returncode != 0:
+            commit_msg = f"chore: update trending posts (added {new_posts_count} new)"
+            subprocess.run(["git", "commit", "-m", commit_msg], check=True)
+            subprocess.run(["git", "push"], check=True)
+            print("Successfully pushed changes to GitHub.")
+        else:
+            print("No new data to commit.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during git push operations: {e}")
+
 if __name__ == "__main__":
     main()
