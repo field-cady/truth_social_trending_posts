@@ -3,12 +3,44 @@ import sys
 import json
 import subprocess
 import requests
+import time
+import random
+import smtplib
+from email.message import EmailMessage
 from datetime import datetime
 from dotenv import load_dotenv
 import re
 
 # Load credentials from .env
 load_dotenv()
+
+def send_alert_email(subject, body):
+    smtp_server = os.environ.get('SMTP_SERVER')
+    smtp_port = os.environ.get('SMTP_PORT', '587')
+    smtp_user = os.environ.get('SMTP_USERNAME')
+    smtp_pass = os.environ.get('SMTP_PASSWORD')
+    alert_email = os.environ.get('ALERT_EMAIL')
+
+    if not all([smtp_server, smtp_user, smtp_pass, alert_email]):
+        print("Skipping email alert: SMTP environment variables are not fully configured.")
+        return
+
+    try:
+        msg = EmailMessage()
+        msg.set_content(body)
+        msg['Subject'] = subject
+        msg['From'] = smtp_user
+        msg['To'] = alert_email
+
+        print(f"Sending alert email to {alert_email}...")
+        server = smtplib.SMTP(smtp_server, int(smtp_port))
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+        server.quit()
+        print("Alert email sent successfully.")
+    except Exception as e:
+        print(f"Failed to send alert email: {e}")
 
 def fetch_via_flaresolverr():
     flaresolverr_url = os.environ.get('FLARESOLVERR_URL')
@@ -71,8 +103,12 @@ def fetch_via_truthbrush():
     )
     
     if result.returncode != 0:
-        print("Error running truthbrush trends:", result.stderr)
-        return None
+        error_msg = f"CRITICAL ERROR RUNNING TRUTHBRUSH!\n\n{result.stderr}\n\nFailing loudly due to Truthbrush error (e.g. login failed, security code required)."
+        print("\n" + "="*80)
+        print(error_msg)
+        print("="*80)
+        send_alert_email("Truth Social Scraper Failed", error_msg)
+        sys.exit(1)
         
     try:
         stdout = result.stdout.strip()
@@ -88,6 +124,11 @@ def fetch_via_truthbrush():
         return None
 
 def main():
+    # Pause for a random time interval between 0 and 2 minutes
+    delay = random.uniform(0, 120)
+    print(f"Sleeping for {delay:.2f} seconds to randomize request timing...")
+    time.sleep(delay)
+    
     # 1. Try FlareSolverr first (for GitHub Actions)
     posts = fetch_via_flaresolverr()
     
