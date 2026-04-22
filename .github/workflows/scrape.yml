@@ -2,7 +2,7 @@ name: Scrape Trending Posts
 
 on:
   schedule:
-    - cron: '*/10 * * * *' # Run every 10 minutes
+    - cron: '0 * * * *' # Run every hour on the hour
   workflow_dispatch: # Allow manual triggering
 
 env:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install truthbrush python-dotenv requests
+          pip install -r requirements.txt
 
       - name: Run scraper
         env:
@@ -42,12 +42,12 @@ jobs:
           TRUTHSOCIAL_USERNAME: ${{ secrets.TRUTHSOCIAL_USERNAME }}
           TRUTHSOCIAL_PASSWORD: ${{ secrets.TRUTHSOCIAL_PASSWORD }}
           FLARESOLVERR_URL: http://localhost:8191/v1
-        run: python scraper.py
+        run: python fetch_trends.py
 
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add trending_posts.jsonl
+          git add responses.jsonl posts.jsonl
           # Only commit if there are changes
           git diff --staged --quiet || (git commit -m "chore: update trending posts" && git push)
