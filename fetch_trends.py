@@ -48,55 +48,96 @@ def fetch_via_flaresolverr():
         return None
         
     print(f"Using FlareSolverr at {flaresolverr_url} to bypass Cloudflare...")
-    url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=20"
-    payload = {
-        "cmd": "request.get",
-        "url": url,
-        "maxTimeout": 60000
-    }
     
-    try:
-        response = requests.post(flaresolverr_url, json=payload, timeout=70)
-        if response.status_code == 200:
-            res_json = response.json()
-            if res_json.get("status") == "ok":
-                body = res_json.get("solution", {}).get("response", "")
-                
-                # FlareSolverr often returns the raw HTML of the page.
-                # If the endpoint returns JSON, it might be wrapped in <pre> or body tags.
-                # Let's try parsing it directly first
-                try:
-                    return json.loads(body)
-                except json.JSONDecodeError:
-                    pass
-                
-                # If not direct JSON, extract with regex (it usually wraps it in HTML)
-                match = re.search(r'(\{.*\}|\[.*\])', body, re.DOTALL)
-                if match:
+    def fetch_url(url):
+        payload = {
+            "cmd": "request.get",
+            "url": url,
+            "maxTimeout": 60000
+        }
+        try:
+            response = requests.post(flaresolverr_url, json=payload, timeout=70)
+            if response.status_code == 200:
+                res_json = response.json()
+                if res_json.get("status") == "ok":
+                    body = res_json.get("solution", {}).get("response", "")
+                    
                     try:
-                        return json.loads(match.group(1))
+                        return json.loads(body)
                     except json.JSONDecodeError:
                         pass
-                
-                # Try scraping out HTML tags entirely
-                text_only = re.sub(r'<[^>]+>', '', body).strip()
-                try:
-                    return json.loads(text_only)
-                except json.JSONDecodeError:
-                    print("Failed to decode JSON from FlareSolverr response.")
-                    print("First 500 chars:", body[:500])
                     
-        else:
-            print(f"FlareSolverr HTTP {response.status_code}: {response.text}")
-    except Exception as e:
-        print(f"Error calling FlareSolverr: {e}")
+                    match = re.search(r'(\{.*\}|\[.*\])', body, re.DOTALL)
+                    if match:
+                        try:
+                            return json.loads(match.group(1))
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    text_only = re.sub(r'<[^>]+>', '', body).strip()
+                    try:
+                        return json.loads(text_only)
+                    except json.JSONDecodeError:
+                        print("Failed to decode JSON from FlareSolverr response.")
+                        print("First 500 chars:", body[:500])
+                        
+            else:
+                print(f"FlareSolverr HTTP {response.status_code}: {response.text}")
+        except Exception as e:
+            print(f"Error calling FlareSolverr: {e}")
+            
+        return None
+
+    posts1 = fetch_url("https://truthsocial.com/api/v1/truth/trending/truths?limit=20")
+    posts2 = fetch_url("https://truthsocial.com/api/v1/truth/trending/truths?offset=10&limit=20")
+    
+    if posts1 and posts2:
+        # Keep unique posts by id to avoid duplicates if API limit parameter works randomly
+        seen = set()
+        combined = []
+        for p in posts1 + posts2:
+            if isinstance(p, dict) and 'id' in p:
+                if p['id'] not in seen:
+                    seen.add(p['id'])
+                    combined.append(p)
+            else:
+                combined.append(p)
+        return combined[:20]
+    elif posts1:
+        return posts1[:20]
+    elif posts2:
+        return posts2[:20]
         
     return None
 
 def fetch_via_truthbrush():
     print("Running truthbrush trends locally...")
+    script = """
+import json
+from truthbrush.api import Api
+try:
+    api = Api()
+    p1 = api.trending(limit=20)
+    try:
+        api._Api__check_login()
+        p2 = api._get('/v1/truth/trending/truths?offset=10')
+    except Exception:
+        p2 = []
+    seen = set()
+    combined = []
+    for p in (p1 or []) + (p2 or []):
+        if isinstance(p, dict) and 'id' in p:
+            if p['id'] not in seen:
+                seen.add(p['id'])
+                combined.append(p)
+    print(json.dumps(combined[:20]))
+except Exception as e:
+    import sys
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
+"""
     result = subprocess.run(
-        ["truthbrush", "trends"],
+        [sys.executable, "-c", script],
         capture_output=True,
         text=True,
         check=False

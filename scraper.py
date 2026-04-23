@@ -54,7 +54,7 @@ def fetch_via_flaresolverr(url, token=None):
         print(f"Error calling FlareSolverr: {e}")
     return None
 
-def fetch_via_drissionpage(url, token):
+def fetch_via_drissionpage(urls, token):
     try:
         from DrissionPage import ChromiumPage
         from DrissionPage import ChromiumOptions
@@ -71,21 +71,37 @@ def fetch_via_drissionpage(url, token):
         page.get('https://truthsocial.com')
         time.sleep(10) # Wait for challenge
         
-        print("Fetching API endpoint via injected JS fetch...")
-        js = f"""
-            return fetch('{url}', {{
-                method: 'GET',
-                headers: {{
-                    'Authorization': 'Bearer {token if token else ""}',
-                    'Accept': 'application/json'
-                }}
-            }}).then(res => res.json()).catch(err => ({{'error': err.toString()}}));
-        """
-        data = page.run_js(js)
+        print("Fetching API endpoints via injected JS fetch...")
+        combined = []
+        for url in urls:
+            js = f"""
+                return fetch('{url}', {{
+                    method: 'GET',
+                    headers: {{
+                        'Authorization': 'Bearer {token if token else ""}',
+                        'Accept': 'application/json'
+                    }}
+                }}).then(res => res.json()).catch(err => ({{'error': err.toString()}}));
+            """
+            data = page.run_js(js)
+            if isinstance(data, list):
+                combined.extend(data)
+            elif isinstance(data, dict) and 'error' not in data:
+                # If it returned a dict but not an error
+                combined.append(data)
         
         page.quit()
         
-        return data
+        seen = set()
+        unique = []
+        for p in combined:
+            if isinstance(p, dict) and 'id' in p:
+                if p['id'] not in seen:
+                    seen.add(p['id'])
+                    unique.append(p)
+            else:
+                unique.append(p)
+        return unique[:20]
     except ImportError:
         print("DrissionPage not installed. Skipping local browser fallback.")
         return None
@@ -135,21 +151,49 @@ def main():
     
     # If in GitHub Actions (FlareSolverr is available)
     if flaresolverr_url:
-        url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=20"
-        trending_posts = fetch_via_flaresolverr(url, token)
+        url1 = "https://truthsocial.com/api/v1/truth/trending/truths?limit=20"
+        url2 = "https://truthsocial.com/api/v1/truth/trending/truths?offset=10&limit=20"
+        p1 = fetch_via_flaresolverr(url1, token)
+        p2 = fetch_via_flaresolverr(url2, token)
+        
+        seen = set()
+        combined = []
+        for p in (p1 or []) + (p2 or []):
+            if isinstance(p, dict) and 'id' in p:
+                if p['id'] not in seen:
+                    seen.add(p['id'])
+                    combined.append(p)
+        trending_posts = combined[:20] if combined else None
     
     # Fallback to truthbrush (local testing)
     if not trending_posts:
         try:
             api = get_api()
-            trending_posts = api.trending(limit=20)
+            p1 = api.trending(limit=20)
+            try:
+                api._Api__check_login()
+                p2 = api._get('/v1/truth/trending/truths?offset=10')
+            except:
+                p2 = []
+            
+            seen = set()
+            combined = []
+            for p in (p1 or []) + (p2 or []):
+                if isinstance(p, dict) and 'id' in p:
+                    if p['id'] not in seen:
+                        seen.add(p['id'])
+                        combined.append(p)
+            trending_posts = combined[:20] if combined else None
         except Exception as e:
             print(f"Error fetching trending posts via truthbrush: {e}")
             
     # Fallback to DrissionPage (local residential connection bypassing Cloudflare)
     if not trending_posts:
-        url = "https://truthsocial.com/api/v1/truth/trending/truths?limit=20"
-        trending_posts = fetch_via_drissionpage(url, token)
+        urls = [
+            "https://truthsocial.com/api/v1/truth/trending/truths?limit=20",
+            "https://truthsocial.com/api/v1/truth/trending/truths?offset=10&limit=20"
+        ]
+        trending_posts = fetch_via_drissionpage(urls, token)
 
     if isinstance(trending_posts, dict) and 'errors' in trending_posts:
         print(f"API Error returned: {trending_posts}")
